@@ -136,6 +136,12 @@ sat_Rate = 900  # Default to 15 minutes for Sat Comm
 temp_Rate_air = 3600  # Default once an hour - Air Temp
 temp_Rate_h2o = 3600  # Default once an hour - Water Temp
 
+rpi_bus_number = 1
+
+multiplexer_address = 0x70  # MUX Address
+I2C_ch_0 = 0B00000001  # MUX's Address for Water Temp
+I2C_ch_2 = 0B00000100  # MUX's Address for Air Temp
+
 # Allows User to Adjust Sample rates
 sample_setup()
 
@@ -152,6 +158,9 @@ uart = serial.Serial("/dev/ttyS0", baudrate=9600, timeout=10)
 # Create a GPS module instance.
 gps = adafruit_gps.GPS(uart, debug=False)  # Use UART/pyserial
 
+# Makes sure we're using BUS 1 on the raspberry Pi. Should already be default
+bus = smbus2.SMBus(rpi_bus_number)
+
 # Use Pi I2C
 i2c = busio.I2C(board.SCL, board.SDA)
 
@@ -159,21 +168,13 @@ i2c = busio.I2C(board.SCL, board.SDA)
 mux = TCA9548A(i2c)
 
 # Create an IMU I2C connection through MUX
-sensor_IMU = LSM6DS33(mux[0])
+sensor_IMU = LSM6DS33(mux[1])
 
-# Create Water Temperature I2C connection through MUX
-h2o_temp = tsys01.TSYS01()
-try:
-    h2o_temp.init(mux[1])
-except ValueError:
-    sys.exit("Could not start up Water Temp Sensor")
-
-# Create Air Temperature I2C connection through MUX
-air_temp = tsys01.TSYS01()
-try:
-    air_temp.init(mux[2])
-except ValueError:
-    sys.exit("Could not start up Air Temp Sensor")
+# Create variable for Temperature sensors
+temperature = tsys01.TSYS01()
+bus.write_byte(multiplexer_address, I2C_ch_0)  # Initial Value for checking
+if not temperature.init():
+    print("Error initializing sensors")
 
 # Sets file up for logging Sensors (not IMU)
 data_File = open("/media/GPS_Temp.csv", "a")
@@ -215,13 +216,19 @@ while infLoop:
     # Checks if it is time to take Water Temp
     if tempw_check - h2o_time >= temp_Rate_air:
         h2o_time = tempw_check
-        h2o_temp.read()
+        bus.write_byte(multiplexer_address, I2C_ch_0)
+        sleep(60)
+        temperature.read()
         waterRecord = "%.2f" % h2o_temp.temperature(tsys01.UNITS_Farenheit)
+        sleep(60)
     # Checks if it is time to take Air Temp
     if tempw_check - air_time >= temp_Rate_air:
         air_time = tempa_check
-        air_temp.read()
-        waterRecord = "%.2f" % air_temp.temperature(tsys01.UNITS_Farenheit)
+        bus.write_byte(multiplexer_address, I2C_ch_2)
+        sleep(60)
+        temperature.read()
+        airRecord = "%.2f" % air_temp.temperature(tsys01.UNITS_Farenheit)
+        sleep(60)
     # Checks if it is time to gather GPS data/Log it
     if current - last_log >= gps_Rate:
         last_log = current
