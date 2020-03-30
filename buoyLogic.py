@@ -136,21 +136,11 @@ sat_Rate = 900  # Default to 15 minutes for Sat Comm
 temp_Rate_air = 3600  # Default once an hour - Air Temp
 temp_Rate_h2o = 3600  # Default once an hour - Water Temp
 
-rpi_bus_number = 1
-
-multiplexer_address = 0x70  # MUX Address
-I2C_ch_0 = 0B00000001  # MUX's Address for Water Temp
-I2C_ch_2 = 0B00000100  # MUX's Address for Air Temp
-
 # Allows User to Adjust Sample rates
 sample_setup()
 
 # Bool to exit while-loop
 infLoop = True
-
-# Strings to hold temperature values
-airRecord = ' '
-waterRecord = ' '
 
 # Use Pi UART (Tx/Rx) for GPS
 uart = serial.Serial("/dev/ttyS0", baudrate=9600, timeout=10)
@@ -158,23 +148,19 @@ uart = serial.Serial("/dev/ttyS0", baudrate=9600, timeout=10)
 # Create a GPS module instance.
 gps = adafruit_gps.GPS(uart, debug=False)  # Use UART/pyserial
 
-# Makes sure we're using BUS 1 on the raspberry Pi. Should already be default
-bus = smbus2.SMBus(rpi_bus_number)
-
 # Use Pi I2C
 i2c = busio.I2C(board.SCL, board.SDA)
 
-# Initialize MUX
-mux = TCA9548A(i2c)
-
 # Create an IMU I2C connection through MUX
-sensor_IMU = LSM6DS33(mux[1])
+sensor_IMU = LSM6DS33(i2c)
 
 # Create variable for Temperature sensors
-temperature = tsys01.TSYS01()
-bus.write_byte(multiplexer_address, I2C_ch_0)  # Initial Value for checking
-if not temperature.init():
-    print("Error initializing sensors")
+airSensor = tsys01.TSYS01()
+waterSensor = tys01.TSYS01(4)
+airSensor.init()
+waterSensor.init()
+airRecord = ' '
+waterRecord = ' '
 
 # Sets file up for logging Sensors (not IMU)
 data_File = open("/media/GPS_Temp.csv", "a")
@@ -183,8 +169,8 @@ if os.stat("/media/GPS_Temp.csv").st_size == 0:
 time.sleep(5)
 data_File.close()
 # Setup of IMU file
-# Accel = Acceleration m/s^2
-# Gyro degree/s
+# Accel = Acceleration -> m/s^2
+# Gyro -> degree/s
 imu_File = open("/media/imu_Data.csv", "a")
 if os.stat("/media/imu_Data.csv").st_size == 0:
     imu_File.write("Date,Time,Accel X,Accel Y,Accel Z,Gyro X,Gyro Y,Gyro Z\n")
@@ -216,19 +202,15 @@ while infLoop:
     # Checks if it is time to take Water Temp
     if tempw_check - h2o_time >= temp_Rate_air:
         h2o_time = tempw_check
-        bus.write_byte(multiplexer_address, I2C_ch_0)
-        sleep(60)
-        temperature.read()
-        waterRecord = "%.2f" % h2o_temp.temperature(tsys01.UNITS_Farenheit)
-        sleep(60)
+        waterSensor.read()
+        waterRecord = "%.2f" % waterSensor.temperature(tsys01.UNITS_Centigrade)
+        sleep(0.2)
     # Checks if it is time to take Air Temp
     if tempw_check - air_time >= temp_Rate_air:
         air_time = tempa_check
-        bus.write_byte(multiplexer_address, I2C_ch_2)
-        sleep(60)
-        temperature.read()
-        airRecord = "%.2f" % air_temp.temperature(tsys01.UNITS_Farenheit)
-        sleep(60)
+        airSensor.read()
+        airRecord = "%.2f" % airSensor.temperature(tsys01.UNITS_Centigrade)
+        sleep(0.2)
     # Checks if it is time to gather GPS data/Log it
     if current - last_log >= gps_Rate:
         last_log = current
@@ -262,8 +244,8 @@ while infLoop:
             imu_log = secondary
             continue
         # IMU Data is gathered during the last 10 minutes of an hour
-        accel = "%.2f, %.2f, %.2f"%sensor_IMU.acceleration
-        gyro = "%.2f, %.2f, %.2f"%sensor_IMU.gyro
+        accel = "%.2f, %.2f, %.2f" % sensor_IMU.acceleration
+        gyro = "%.2f, %.2f, %.2f" % sensor_IMU.gyro
         imu_File = open("/media/imu_Data.csv", "a")
         imu_File.write(str(theDate)+","+str(timeOday)+","+accel+","+gyro+"\n")
         imu_File.flush()
