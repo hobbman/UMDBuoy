@@ -8,7 +8,6 @@ import busio
 import adafruit_gps
 import serial
 from adafruit_lsm6ds import LSM6DS33
-# from adafruit_bus_device.i2c_device import I2CDevice
 import RPi.GPIO as GPIO
 import tsys01
 
