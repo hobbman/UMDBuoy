@@ -177,7 +177,7 @@ GPIO.setup(22, GPIO.OUT)  # Pin 15 on Raspberry Pi (SDA Control)
 GPIO.output(27, GPIO.HIGH)  # Set GPIO 27 to HIGH to enable SCL
 GPIO.output(22, GPIO.HIGH)  # Set GPIO 22 to HIGH to enable SDA
 sleep(0.5)
-waterSensor = tys01.TSYS01()  # Make new object for water thermometer
+waterSensor = tsys01.TSYS01()  # Make new object for water thermometer
 waterSensor.init()  # Initialize water thermometer
 sleep(0.5)
 # Disable Water Temperature Sensor communication
