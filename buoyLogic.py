@@ -285,7 +285,7 @@ while infLoop:
             long = '{0:.6f}'.format(gps.longitude)
         # Log Date, Time, GPS data, and Temperatures
         data_File = open("/media/GPS_Temp.csv", "a")
-        data_File.write(str(theDate)+","+str(timeOday)+","+lat+","+long+"," + waterRecord + "," + waterRecord + "\n")
+        data_File.write(str(theDate)+","+str(timeOday)+","+lat+","+long+"," + waterRecord + "," + airRecord + "\n")
         data_File.flush()
         time.sleep(5)
         data_File.close()
