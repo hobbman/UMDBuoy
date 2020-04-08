@@ -10,6 +10,9 @@ import serial
 from adafruit_lsm6ds import LSM6DS33
 import RPi.GPIO as GPIO
 import tsys01
+import sys
+import glob
+import signal
 
 
 # Function for saving Data String to specified file - Returns void
@@ -36,6 +39,42 @@ def log_setup():
     return file_path
 
 
+def sat_transmit(message):
+    fail_check = True
+    mess_process = b("AT+SBDWT=" + message + "\r")  # Encodes message in binary
+    ser = serial.Serial('/dev/ttyUSB0', 19200, 8, 'N', 1, timeout=1)
+    ser.timeout = 10  # Sets the timeout time to 10 seconds
+
+    # Disables RTS/CTS flow control
+    ser.write(b"AT&K0\r")
+    response = ser.read(11)  # Should have 4 Byte Response (2 Byte for OK\r message)
+    # ******* Replace the following with more flushed out error checking ****
+    if "OK".encode() in response:
+        print("OK - Connection to 9603")
+    else:
+        print("No Connection to RockBLOCK9603")
+    #########################################################################
+    # Sends Message
+    ser.write(mess_process)
+    response = ser.read(15)
+    # ******* Replace the following with more flushed out error checking ****
+    if "OK".encode() in response:
+        print("OK - Message Sent.")
+    else:
+        print("Failed to Send!")
+    #########################################################################
+    # Check that message sent successfully
+    ser.write(b"AT+SBDIX\r")
+    response = ser.read(32)  # Figure out exact size!!!
+    # ******* Replace the following with more flushed out error checking ****
+    if "+SBDIX".encode() in response:
+        print("Message Sent. Over.")
+    else:
+        print("Did not send message!")
+    #########################################################################
+    ser.close()
+    return True
+
 # Function that allows users to adjust sampling rates with no need for coding knowledge - Returns void
 def sample_setup():
     global gps_Rate
@@ -53,51 +92,51 @@ def sample_setup():
     print('#' * 40)
     while True:
         try:
-            input_temperature = int(input("Enter GPS sample rate (in minutes): "))
+            usr_input = int(input("Enter GPS sample rate (in minutes): "))
             break
         except ValueError:
             print("Must enter an integer value!")
             sys.exit()
-    if input_temperature > 0:
-        gps_Rate = input_temperature*60
+    if usr_input > 0:
+        gps_Rate = usr_input*60
     print('#' * 40)
     while True:
         try:
-            input_temperature = int(input("Enter Satellite Transmission Rate (in minutes): "))
+            usr_input = int(input("Enter Satellite Transmission Rate (in minutes): "))
             break
         except ValueError:
             print("Must enter an integer value!")
-    if input_temperature > 0:
-        sat_Rate = input_temperature*60
+    if usr_input > 0:
+        sat_Rate = usr_input*60
     print('#' * 40)
     while True:
         try:
-            input_temperature = int(input("Enter Air Temperature sample rate (in minutes): "))
+            usr_input = int(input("Enter Air Temperature sample rate (in minutes): "))
             break
         except ValueError:
             print("Must enter an integer value!")
-    if input_temperature > 0:
-        temp_Rate_air = input_temperature*60
+    if usr_input > 0:
+        temp_Rate_air = usr_input*60
     print('#' * 40)
     while True:
         try:
-            input_temperature = int(input("Enter Water Temperature sample rate (in minutes): "))
+            usr_input = int(input("Enter Water Temperature sample rate (in minutes): "))
             break
         except ValueError:
             print("Must enter an integer value!")
-    if input_temperature > 0:
-        temp_Rate_h2o = input_temperature*60
+    if usr_input > 0:
+        temp_Rate_h2o = usr_input*60
     print('#' * 40)
     print("Now the IMU will be setup. \nFirst a start time will be given.")
     print("If 30 is given. IMU will begin recording at the 30th minute of the hour.")
     while True:
         try:
-            input_temperature = int(input("Enter the START time of IMU data recording (in minutes): "))
+            usr_input = int(input("Enter the START time of IMU data recording (in minutes): "))
             break
         except ValueError:
             print("Must enter an integer value!")
-    if input_temperature > 0:
-        imu_Rate_start = input_temperature*60
+    if usr_input > 0:
+        imu_Rate_start = usr_input*60
     print('#' * 40)
     print("Now the IMU end time will be given.")
     print("If 40 is given. IMU will end recording data around the 40th minute of the hour.")
@@ -106,15 +145,15 @@ def sample_setup():
     print("Meaning there is a total sampling time of 10min")
     while True:
         try:
-            input_temperature = int(input("Enter the END time of the IMU data recording (in minutes): "))
-            if imu_Rate_start/60 < input_temperature:
+            usr_input = int(input("Enter the END time of the IMU data recording (in minutes): "))
+            if imu_Rate_start/60 < usr_input:
                 break
             else:
                 print("End time must be greater then the start time!")
         except ValueError:
             print("Must enter an integer value!")
-    if input_temperature > 0:
-        imu_Rate_end = input_temperature*60
+    if usr_input > 0:
+        imu_Rate_end = usr_input*60
     print('#' * 40)
     print('#' * 40)
     print("New Sample Rates are as follow:\nGps:" + str(int(gps_Rate/60)) + "min\nSatellite:" + str(int(sat_Rate/60))
@@ -284,6 +323,7 @@ while infLoop:
             lat = '{0:.6f}'.format(gps.latitude)
             long = '{0:.6f}'.format(gps.longitude)
         # Log Date, Time, GPS data, and Temperatures
+        sat_transmit(lat + long + "")
         data_File = open("/media/GPS_Temp.csv", "a")
         data_File.write(str(theDate)+","+str(timeOday)+","+lat+","+long+"," + waterRecord + "," + airRecord + "\n")
         data_File.flush()
