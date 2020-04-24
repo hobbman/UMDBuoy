@@ -10,10 +10,13 @@ import serial
 from adafruit_lsm6ds import LSM6DS33
 import RPi.GPIO as GPIO
 import tsys01
-import sys
 import glob
 import signal
+#import adafruit_ads1x15.ads1015 as ADS # Uncomment to add voltage monitoring (12-Bit ADC)
+#import adafruit_ads1x15.ads1115 as ADS # Uncomment to add voltage monitoring (16-bit ADC)
+#import adafruit_ads1x15.analog_in import AnalogIn # Uncomment when either ADC is added
 
+### Please note that all ADC code has not been tested and may require adjustment to function ###
 
 # Function for saving Data String to specified file - Returns void
 def new_log(file_path, file_data="No Data Entered"):
@@ -23,6 +26,45 @@ def new_log(file_path, file_data="No Data Entered"):
     time.sleep(5)
     temp_file.close()
 
+# Function that Handles ASCII transmission via RockBLOCK 9603
+def satillite_transmit(message_out):
+    againtry = True
+    set_try_time = time.monotonic()
+    while againtry:
+        cur_try_time = time.monotonic() 
+        print(len(message_out), "If less then 50 should cost only 1 credit")
+        # Setup communication to Sat Comm Module
+        #ser = serial.Serial('/dev/ttyUSB0', 19200, 8, 'N', 1, timeout=10)
+        global ser
+        ser.write(b"AT+CSQ\r")  # Command to check signal strength
+        response = ser.read(5) # Debugging to check antenna
+        print(response.decode())
+        print("*******************************************")
+        ser.write(b"AT\r")
+        response = ser.read(4)
+        print("*******************************************")
+        ser.write(b"AT&K0") # Disable Flow Control
+        response = ser.read(11)
+        print(response.decode(), "&K0 Called")
+        print("+++++++++++++++++++++++++++++++++++++++++++")
+        #ser.write(("AT+SBDWT=" + message_out + "\r").encode())  # Sends ASCII Message
+        formatted_msg = "AT+SBDWT=" + message_out + "\r"
+        ser.write(formatted_msg.encode())
+        response = ser.read(20)
+        print(response.decode(), "+SBDWT Called")
+        print("___________________________________________")
+        ser.write(b"AT+SBDIX\r")  # Checks if message was sent
+        response = ser.read(66)
+        valuech = response.decode()
+        print(valuech)
+        if "SBDIX:" in valuech:
+            print("Command recieved")
+            againtry = False
+        else:
+            print("Issue with final Command, retrying...")
+        if cur_try_time - set_try_time >= 240:
+            againtry = False
+    ser.close()
 
 # Function for creating new files - Returns String
 def log_setup():
@@ -38,42 +80,6 @@ def log_setup():
     temp_file.close()
     return file_path
 
-
-def sat_transmit(message):
-    fail_check = True
-    mess_process = b("AT+SBDWT=" + message + "\r")  # Encodes message in binary
-    ser = serial.Serial('/dev/ttyUSB0', 19200, 8, 'N', 1, timeout=1)
-    ser.timeout = 10  # Sets the timeout time to 10 seconds
-
-    # Disables RTS/CTS flow control
-    ser.write(b"AT&K0\r")
-    response = ser.read(11)  # Should have 4 Byte Response (2 Byte for OK\r message)
-    # ******* Replace the following with more flushed out error checking ****
-    if "OK".encode() in response:
-        print("OK - Connection to 9603")
-    else:
-        print("No Connection to RockBLOCK9603")
-    #########################################################################
-    # Sends Message
-    ser.write(mess_process)
-    response = ser.read(15)
-    # ******* Replace the following with more flushed out error checking ****
-    if "OK".encode() in response:
-        print("OK - Message Sent.")
-    else:
-        print("Failed to Send!")
-    #########################################################################
-    # Check that message sent successfully
-    ser.write(b"AT+SBDIX\r")
-    response = ser.read(32)  # Figure out exact size!!!
-    # ******* Replace the following with more flushed out error checking ****
-    if "+SBDIX".encode() in response:
-        print("Message Sent. Over.")
-    else:
-        print("Did not send message!")
-    #########################################################################
-    ser.close()
-    return True
 
 # Function that allows users to adjust sampling rates with no need for coding knowledge - Returns void
 def sample_setup():
@@ -92,51 +98,51 @@ def sample_setup():
     print('#' * 40)
     while True:
         try:
-            usr_input = int(input("Enter GPS sample rate (in minutes): "))
+            input_temperature = int(input("Enter GPS sample rate (in minutes): "))
             break
         except ValueError:
             print("Must enter an integer value!")
             sys.exit()
-    if usr_input > 0:
-        gps_Rate = usr_input*60
+    if input_temperature > 0:
+        gps_Rate = input_temperature*60
     print('#' * 40)
     while True:
         try:
-            usr_input = int(input("Enter Satellite Transmission Rate (in minutes): "))
+            input_temperature = int(input("Enter Satellite Transmission Rate (in minutes): "))
             break
         except ValueError:
             print("Must enter an integer value!")
-    if usr_input > 0:
-        sat_Rate = usr_input*60
+    if input_temperature > 0:
+        sat_Rate = input_temperature*60
     print('#' * 40)
     while True:
         try:
-            usr_input = int(input("Enter Air Temperature sample rate (in minutes): "))
+            input_temperature = int(input("Enter Air Temperature sample rate (in minutes): "))
             break
         except ValueError:
             print("Must enter an integer value!")
-    if usr_input > 0:
-        temp_Rate_air = usr_input*60
+    if input_temperature > 0:
+        temp_Rate_air = input_temperature*60
     print('#' * 40)
     while True:
         try:
-            usr_input = int(input("Enter Water Temperature sample rate (in minutes): "))
+            input_temperature = int(input("Enter Water Temperature sample rate (in minutes): "))
             break
         except ValueError:
             print("Must enter an integer value!")
-    if usr_input > 0:
-        temp_Rate_h2o = usr_input*60
+    if input_temperature > 0:
+        temp_Rate_h2o = input_temperature*60
     print('#' * 40)
     print("Now the IMU will be setup. \nFirst a start time will be given.")
     print("If 30 is given. IMU will begin recording at the 30th minute of the hour.")
     while True:
         try:
-            usr_input = int(input("Enter the START time of IMU data recording (in minutes): "))
+            input_temperature = int(input("Enter the START time of IMU data recording (in minutes): "))
             break
         except ValueError:
             print("Must enter an integer value!")
-    if usr_input > 0:
-        imu_Rate_start = usr_input*60
+    if input_temperature > 0:
+        imu_Rate_start = input_temperature*60
     print('#' * 40)
     print("Now the IMU end time will be given.")
     print("If 40 is given. IMU will end recording data around the 40th minute of the hour.")
@@ -145,15 +151,15 @@ def sample_setup():
     print("Meaning there is a total sampling time of 10min")
     while True:
         try:
-            usr_input = int(input("Enter the END time of the IMU data recording (in minutes): "))
-            if imu_Rate_start/60 < usr_input:
+            input_temperature = int(input("Enter the END time of the IMU data recording (in minutes): "))
+            if imu_Rate_start/60 < input_temperature:
                 break
             else:
                 print("End time must be greater then the start time!")
         except ValueError:
             print("Must enter an integer value!")
-    if usr_input > 0:
-        imu_Rate_end = usr_input*60
+    if input_temperature > 0:
+        imu_Rate_end = input_temperature*60
     print('#' * 40)
     print('#' * 40)
     print("New Sample Rates are as follow:\nGps:" + str(int(gps_Rate/60)) + "min\nSatellite:" + str(int(sat_Rate/60))
@@ -170,22 +176,26 @@ def sample_setup():
 # Initialized Sample rates
 imu_Rate_start = 3000  # Start 10min to top of the hour
 imu_Rate_end = 3600  # End at top of hour
-gps_Rate = 900  # Default to 15 minutes for GPS
-sat_Rate = 900  # Default to 15 minutes for Sat Comm
+gps_Rate = 1800  # Default to 30 minutes for GPS
+sat_Rate = 1800  # Default to 30 minutes for Sat Comm
 temp_Rate_air = 3600  # Default once an hour - Air Temp
 temp_Rate_h2o = 3600  # Default once an hour - Water Temp
+adc_Rate = 1800  # Default to 30 minutes for ADC
 
 # Disable GPIO warnings (these can be safely ignored in this case)
 GPIO.setwarnings(False)
 
 # Allows User to Adjust Sample rates
-sample_setup()
+sample_setup() # Comment out to disallow user given sample rates
 
 # Bool to exit while-loop
 infLoop = True
 
 # Use Pi UART (Tx/Rx) for GPS
 uart = serial.Serial("/dev/ttyS0", baudrate=9600, timeout=10)
+
+# Use Pi UART (Tx/Rx) for Sat Comm (9603)
+ser = serial.Serial("/dev/ttyUSB0", 19200, 8, 'N', 1, timeout=10)
 
 # Create a GPS module instance.
 gps = adafruit_gps.GPS(uart, debug=False)  # Use UART/pyserial
@@ -194,6 +204,9 @@ gps = adafruit_gps.GPS(uart, debug=False)  # Use UART/pyserial
 airRecord = "No Record"
 waterRecord = "No Record"
 
+# Create variable for ADC sensor
+adc_data = "erro"
+
 # Setup Thermometer for Air Temperature using GPIO.BCM mode
 GPIO.setup(4, GPIO.OUT)  # Pin 7 on Raspberry Pi (SCL Control)
 GPIO.setup(17, GPIO.OUT)  # Pin 11 on Raspberry Pi (SDA Control)
@@ -201,6 +214,7 @@ GPIO.setup(17, GPIO.OUT)  # Pin 11 on Raspberry Pi (SDA Control)
 GPIO.output(4, GPIO.HIGH)  # Set GPIO 4 to HIGH to enable SCL
 GPIO.output(17, GPIO.HIGH)  # Set GPIO 17 to HIGH to enable SDA
 sleep(0.5)
+# Re-Enable to turn on air temp
 airSensor = tsys01.TSYS01()  # Make new object for air thermometer
 airSensor.init()  # Initialize air thermometer
 sleep(0.5)
@@ -225,14 +239,21 @@ GPIO.output(22, GPIO.LOW)
 # Use Pi I2C
 i2c = busio.I2C(board.SCL, board.SDA)
 
-# Create an IMU I2C connection through MUX
+# Create an IMU I2C connection
 sensor_IMU = LSM6DS33(i2c)
 
+# Create an ADC I2C connection
+#sensor_ADC = ADS.ADS1015(i2c) #  Uncomment if using the ADS1015 ADC
+#sensor_ADC = ADS.ADS1115(i2c) #  Uncomment if using the ADS1115 ADC
+
+# Create channel for ADC. here ADS.P0 is A0 on the ADS
+#adc_chan = AnalogIn(ads, ADS.P0) #  Uncomment if adding either ADC
+
 # Sets file up for logging Sensors (not IMU)
-# Latitude, Longitude -> degrees
-# Temperatures -> Degrees Centigrade
-# Time -> 12hr clock
-# Date -> MM/DD/YYYY
+# -- Latitude, Longitude -> degrees
+# -- Temperatures -> Degrees Centigrade
+# -- Time -> 24hr clock
+# -- Date -> MM/DD/YYYY
 data_File = open("/media/GPS_Temp.csv", "a")
 if os.stat("/media/GPS_Temp.csv").st_size == 0:
     data_File.write("Date,Time,Latitude,Longitude,Water Temp(C),Air Temp(C)\n")
@@ -240,8 +261,8 @@ time.sleep(5)
 data_File.close()
 
 # Setup of IMU file
-# Accel = Acceleration -> m/s^2
-# Gyro -> degree/s
+# -- Accel = Acceleration -> m/s^2
+# -- Gyro -> degree/s
 imu_File = open("/media/imu_Data.csv", "a")
 if os.stat("/media/imu_Data.csv").st_size == 0:
     imu_File.write("Date,Time,Accel X,Accel Y,Accel Z,Gyro X,Gyro Y,Gyro Z\n")
@@ -260,6 +281,7 @@ last_log = time.monotonic()
 imu_log = time.monotonic()
 h2o_time = time.monotonic()
 air_time = time.monotonic()
+#adc_time = time.monotonic()  # Uncomment if you want to add seperate timer for ADC
 
 while infLoop:
 
@@ -268,13 +290,13 @@ while infLoop:
 
     # Counters of time passed.
     current = time.monotonic()
-    secondary = time.monotonic()
+    imu_check = time.monotonic()
     tempa_check = time.monotonic()
     tempw_check = time.monotonic()
     timeOday = datetime.now().time()
 
     # Checks if it is time to take Water Temp
-    if tempw_check - h2o_time >= temp_Rate_air:
+    if tempw_check - h2o_time >= temp_Rate_h2o:
         h2o_time = tempw_check
         GPIO.output(4, GPIO.HIGH)
         GPIO.output(17, GPIO.HIGH)
@@ -284,11 +306,12 @@ while infLoop:
         else:
             waterRecord = "%.2f" % waterSensor.temperature(tsys01.UNITS_Centigrade)
             sleep(0.2)
+        #waterRecord = "Error" #  Use while Temp not setup
         GPIO.output(4, GPIO.LOW)
         GPIO.output(17, GPIO.LOW)
 
     # Checks if it is time to take Air Temp
-    if tempw_check - air_time >= temp_Rate_air:
+    if tempa_check - air_time >= temp_Rate_air:
         air_time = tempa_check
         GPIO.output(27, GPIO.HIGH)
         GPIO.output(22, GPIO.HIGH)
@@ -298,10 +321,11 @@ while infLoop:
         else:
             airRecord = "%.2f" % airSensor.temperature(tsys01.UNITS_Centigrade)
             sleep(0.2)
+        #airRecord = "Error" #  Use while Temp not setup
         GPIO.output(27, GPIO.LOW)
         GPIO.output(22, GPIO.LOW)
 
-    # Checks if it is time to gather GPS data/Log it
+    # Checks if it is time to gather GPS data/Log it, Send Sat Comm, Check battery level
     if current - last_log >= gps_Rate:
         last_log = current
         # GPS Data is gathered
@@ -310,6 +334,8 @@ while infLoop:
             long = lat
             # timeOday = datetime.now().time()
             theDate = datetime.now().date()
+            satData = theDate + str(lat)
+            satellite_transmit(satData)
         else:
             # GPS Signal detected
             timeOday = '{:02}:{:02}:{:02}'.format(
@@ -320,10 +346,25 @@ while infLoop:
                 gps.timestamp_utc.tm_mon,
                 gps.timestamp_utc.tm_mday,
                 gps.timestamp_utc.tm_year)
-            lat = '{0:.6f}'.format(gps.latitude)
-            long = '{0:.6f}'.format(gps.longitude)
+            satData = '{}{}{},{:02}{:02}{:02},'.format(
+                gps.timestamp_utc.tm_mon,
+                gps.timestamp_utc.tm_mday,
+                gps.timestamp_utc.tm_year,
+                gps.timestamp_utc.tm_hour,
+                gps.timestamp_utc.tm_min,
+                gps.timestamp_utc.tm_sec)
+            lat = '{0:.5f}'.format(gps.latitude) # .5 gives 3ft accuracy, .6 gives 3inch accuracy
+            long = '{0:.5f}'.format(gps.longitude)
+
+            # Check the Battery with ADC
+            #adc_data = adc_chan.value  # Uncomment to allow for ADC transmission
+
+            # Transmits Data if GPS signal present
+            satData = satData + str(lat) + ',' + str(long) + ',' + adc_data
+
+            #print(satData, "Data to be transmitted!") #  Uncomment for debugging Sat Comm
+            satellite_transmit(satData)
         # Log Date, Time, GPS data, and Temperatures
-        sat_transmit(lat + long + "")
         data_File = open("/media/GPS_Temp.csv", "a")
         data_File.write(str(theDate)+","+str(timeOday)+","+lat+","+long+"," + waterRecord + "," + airRecord + "\n")
         data_File.flush()
@@ -331,15 +372,35 @@ while infLoop:
         data_File.close()
 
     # Checks if it is time to gather IMU data/Log it
-    if secondary - imu_log >= imu_Rate_start:
-        if secondary - imu_log >= imu_Rate_end:
-            imu_log = secondary
-            continue
-        # IMU Data is gathered during the last 10 minutes of an hour
-        accel = "%.2f, %.2f, %.2f" % sensor_IMU.acceleration
-        gyro = "%.2f, %.2f, %.2f" % sensor_IMU.gyro
-        imu_File = open("/media/imu_Data.csv", "a")
-        imu_File.write(str(theDate)+","+str(timeOday)+","+accel+","+gyro+"\n")
-        imu_File.flush()
-        time.sleep(5)
-        imu_File.close()
+    if imu_check - imu_log >= imu_Rate_start:
+        imu_working = True
+        #imu_data_set = " "
+        while imu_working:  # Continue reading IMU data until
+            imu_check = time.monotonic()
+            if imu_check - imu_log >= imu_Rate_end:
+                imu_log = imu_check
+                imu_working = False
+            # IMU Data is gathered during the last 10 minutes of an hour
+            accel = "%.2f, %.2f, %.2f" % sensor_IMU.acceleration
+            gyro = "%.2f, %.2f, %.2f" % sensor_IMU.gyro
+            imu_File = open("/media/imu_Data.csv", "a")
+            imu_File.write(str(theDate)+","+str(timeOday)+","+accel+","+gyro+"\n")
+            imu_File.flush()
+            time.sleep(5)  # Used to ensure that file is finished writing (Eliminate to increase sampling rate)
+            imu_File.close()
+            ###########################################################################################################
+            ################################### Alternative IMU Logging ###############################################
+        ################################# NOT ## TESTED ###############################################################
+    ###################################################################################################################
+            # Uncomment code on line 364
+            # Replace the code between lines 371 - 377 with code below: (Should decrease logging time)
+            #accel = "%.2f, %.2f, %.2f" % sensor_IMU.acceleration
+            #gyro = "%.2f, %.2f, %.2f" % sensor_IMU.gyro
+            #imu_string = str(theDate) + "," + str(timeOday) + "," + accel + "," + gyro + "\n"
+            #imu_data_set = imu_data_set + imu_string
+        # Place these lines outside of the while loop, but inside the if-statement of line 362
+        #imu_File = open("/media/imu_Data.csv", "a")
+        #imu_File.write(imu_data_set)
+        #imu_File.flush()
+        #time.sleep(10)  # Used to ensure that file is finished writing
+        #imu_File.close()
